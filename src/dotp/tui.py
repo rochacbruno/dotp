@@ -1,0 +1,418 @@
+"""TUI interface for DOTP using Textual."""
+
+import os
+import sys
+import subprocess
+from pathlib import Path
+from typing import Optional
+from getpass import getpass
+
+from textual.app import App, ComposeResult
+from textual.containers import Container, Vertical
+from textual.widgets import DataTable, Header, Footer, Input, Label, Button, ProgressBar
+from textual.screen import ModalScreen
+from textual.binding import Binding
+from textual import on, events
+from textual.reactive import reactive
+from cryptography.fernet import InvalidToken
+from rich.text import Text
+from urllib.parse import unquote
+
+from .vault import Vault, TOTPEntry
+from .totp import generate_token, get_valid_until_time, get_time_remaining
+from .config import get_default_vault_path, Config
+
+
+class AddEntryModal(ModalScreen[Optional[TOTPEntry]]):
+    """Modal screen for adding a new entry."""
+
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel", show=True),
+    ]
+
+    def compose(self) -> ComposeResult:
+        """Compose the modal UI."""
+        with Container(id="add-modal"):
+            yield Label("Add New Entry", id="modal-title")
+            yield Label("Label:")
+            yield Input(placeholder="e.g., GitHub", id="label-input")
+            yield Label("Secret:")
+            yield Input(placeholder="TOTP secret key", password=True, id="secret-input")
+            yield Label("Digits (default: 6):")
+            yield Input(placeholder="6", id="digits-input")
+            yield Label("Algorithm (default: SHA1):")
+            yield Input(placeholder="SHA1", id="algo-input")
+            yield Label("Period (default: 30):")
+            yield Input(placeholder="30", id="period-input")
+            with Container(id="button-container"):
+                yield Button("Add", variant="primary", id="add-button")
+                yield Button("Cancel", variant="default", id="cancel-button")
+
+    def action_cancel(self) -> None:
+        """Cancel and close modal."""
+        self.dismiss(None)
+
+    @on(Button.Pressed, "#add-button")
+    def on_add_button(self) -> None:
+        """Handle add button press."""
+        label_input = self.query_one("#label-input", Input)
+        secret_input = self.query_one("#secret-input", Input)
+        digits_input = self.query_one("#digits-input", Input)
+        algo_input = self.query_one("#algo-input", Input)
+        period_input = self.query_one("#period-input", Input)
+
+        label = label_input.value.strip()
+        secret = secret_input.value.strip()
+
+        if not label or not secret:
+            return
+
+        digits = int(digits_input.value) if digits_input.value else 6
+        algo = algo_input.value.upper() if algo_input.value else "SHA1"
+        period = int(period_input.value) if period_input.value else 30
+
+        entry = TOTPEntry(
+            label=label, secret=secret, digits=digits, algorithm=algo, period=period
+        )
+        self.dismiss(entry)
+
+    @on(Button.Pressed, "#cancel-button")
+    def on_cancel_button(self) -> None:
+        """Handle cancel button press."""
+        self.dismiss(None)
+
+
+class DOTPApp(App):
+    """Main TUI application for DOTP."""
+
+    CSS = """
+    #add-modal {
+        align: center middle;
+        background: $surface;
+        border: solid $primary;
+        width: 60;
+        height: auto;
+        padding: 1 2;
+    }
+
+    #modal-title {
+        text-align: center;
+        text-style: bold;
+        padding: 0 0 1 0;
+    }
+
+    #button-container {
+        layout: horizontal;
+        align: center middle;
+        height: auto;
+        padding: 1 0 0 0;
+    }
+
+    #button-container Button {
+        margin: 0 1;
+    }
+
+    DataTable {
+        height: 1fr;
+    }
+
+    DataTable > .datatable--header {
+        text-style: bold;
+        background: $primary;
+    }
+
+    DataTable > .datatable--cursor {
+        background: $secondary;
+    }
+
+    #progress-bar {
+        dock: top;
+        height: 1;
+    }
+
+    #search-input {
+        dock: bottom;
+        height: 3;
+        display: none;
+    }
+
+    #search-input.visible {
+        display: block;
+    }
+    """
+
+    BINDINGS = [
+        Binding("enter", "select_row", "Copy", show=True),  # Handled by DataTable.RowSelected
+        Binding("ctrl+enter", "copy_and_close", "Copy & Close", show=True),
+        Binding("ctrl+a", "add_entry", "Add Entry", show=True),
+        Binding("ctrl+q", "quit", "Quit", show=True),
+        Binding("escape", "clear_search", "Clear Search", show=False),
+    ]
+
+    def __init__(
+        self,
+        vault_path: Path,
+        password: str,
+        close_on_copy: bool = False,
+        clipboard_command: str = "wl-copy",
+    ):
+        """Initialize the TUI app.
+
+        Args:
+            vault_path: Path to the vault file
+            password: Password to decrypt the vault
+            close_on_copy: Whether to close app after copying
+            clipboard_command: Command to use for clipboard
+        """
+        super().__init__()
+        self.vault_path = vault_path
+        self.password = password
+        self.close_on_copy = close_on_copy
+        self.clipboard_command = clipboard_command
+        self.vault = Vault(vault_path)
+        self.search_query = ""
+        self.update_timer = None
+
+    def compose(self) -> ComposeResult:
+        """Compose the main UI."""
+        yield Header()
+        yield ProgressBar(total=30, show_eta=False, id="progress-bar")
+        yield Input(placeholder="Type to search...", id="search-input")
+        yield DataTable(id="entries-table")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        """Load vault and populate table on mount."""
+        try:
+            self.vault.load(self.password)
+        except InvalidToken:
+            self.notify("Invalid password", severity="error")
+            self.exit()
+            return
+
+        table = self.query_one("#entries-table", DataTable)
+        table.add_column("Label", key="label", width=50)
+        table.add_column("Token", key="token", width=15)
+        table.cursor_type = "row"
+
+        self.refresh_table()
+        self.update_progress()
+
+        # Focus the table
+        table.focus()
+
+        # Set up auto-refresh timer
+        self.update_timer = self.set_interval(1.0, self.refresh_tokens)
+
+    def refresh_table(self) -> None:
+        """Refresh the table with current entries."""
+        table = self.query_one("#entries-table", DataTable)
+        table.clear()
+
+        # Get entries based on search query
+        if self.search_query:
+            entries = self.vault.search_entries(self.search_query)
+        else:
+            entries = self.vault.list_entries()
+
+        # Add rows with colored tokens
+        for entry in entries:
+            token = generate_token(entry)
+            # Decode URL-encoded labels for display
+            decoded_label = unquote(entry.label)
+            # Create styled token in green
+            styled_token = Text(token, style="bold green")
+            table.add_row(decoded_label, styled_token, key=entry.label)
+
+        # Select first row if available
+        if table.row_count > 0:
+            table.move_cursor(row=0)
+
+    def refresh_tokens(self) -> None:
+        """Refresh TOTP tokens in the table."""
+        table = self.query_one("#entries-table", DataTable)
+
+        # Update each token
+        for row_key in table.rows:
+            entry = self.vault.get_entry(str(row_key.value))
+            if entry:
+                token = generate_token(entry)
+                styled_token = Text(token, style="bold green")
+                table.update_cell(row_key, "token", styled_token)
+
+        self.update_progress()
+
+    def update_progress(self) -> None:
+        """Update the progress bar based on time remaining."""
+        time_remaining = get_time_remaining()
+        progress = self.query_one("#progress-bar", ProgressBar)
+        progress.update(progress=time_remaining)
+
+    def on_key(self, event: events.Key) -> None:
+        """Handle key presses for search functionality."""
+        search_input = self.query_one("#search-input", Input)
+        table = self.query_one("#entries-table", DataTable)
+
+        # If Enter pressed in search input, focus the table
+        if search_input.has_focus and event.key == "enter":
+            table.focus()
+            event.prevent_default()
+            event.stop()
+            return
+
+        # If table has focus and user types backspace or printable char (not ctrl/arrow keys)
+        # and search is visible, refocus search
+        if table.has_focus and search_input.has_class("visible"):
+            if event.key == "backspace" or (event.is_printable and not event.key.startswith("ctrl")):
+                search_input.focus()
+                # If it's a printable character, append it
+                if event.is_printable and not event.key.startswith("ctrl"):
+                    search_input.value += event.character
+                    def move_cursor():
+                        search_input.cursor_position = len(search_input.value)
+                    self.call_after_refresh(move_cursor)
+                event.prevent_default()
+                event.stop()
+                return
+
+        # If search input is not focused and user types a printable character
+        if not search_input.has_focus and event.is_printable and not event.key.startswith("ctrl"):
+            # Show search input and set its value to include the typed character
+            search_input.add_class("visible")
+            search_input.value = event.character
+            search_input.focus()
+            # Use call_after_refresh to move cursor after focus completes
+            def move_cursor():
+                search_input.cursor_position = len(search_input.value)
+            self.call_after_refresh(move_cursor)
+            event.prevent_default()
+            event.stop()
+
+    @on(Input.Changed, "#search-input")
+    def on_search_input(self, event: Input.Changed) -> None:
+        """Handle search input changes."""
+        self.search_query = event.value
+        self.refresh_table()
+
+        # Hide search input if empty
+        search_input = self.query_one("#search-input", Input)
+        if not event.value:
+            search_input.remove_class("visible")
+            # Refocus table
+            table = self.query_one("#entries-table", DataTable)
+            table.focus()
+
+    @on(DataTable.RowSelected)
+    def on_row_selected(self, event: DataTable.RowSelected) -> None:
+        """Handle row selection (Enter key)."""
+        if event.row_key is None:
+            return
+
+        label = str(event.row_key.value)
+        entry = self.vault.get_entry(label)
+        if entry:
+            token = generate_token(entry)
+            self.copy_to_clipboard(token)
+            self.notify(f"Copied token for '{label}'", severity="information")
+
+            if self.close_on_copy:
+                self.exit()
+
+    def copy_to_clipboard(self, text: str) -> None:
+        """Copy text to clipboard using configured command.
+
+        Args:
+            text: Text to copy to clipboard
+        """
+        try:
+            # Use Popen to avoid blocking - clipboard manager may keep process alive
+            process = subprocess.Popen(
+                self.clipboard_command,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                shell=True,
+            )
+            # Write the text and close stdin
+            process.stdin.write(text.encode())
+            process.stdin.close()
+            # Don't wait for the process - let it run in background
+        except Exception as e:
+            self.notify(f"Failed to copy to clipboard: {e}", severity="error")
+
+    def action_add_entry(self) -> None:
+        """Show modal to add a new entry."""
+
+        def handle_entry(entry: Optional[TOTPEntry]) -> None:
+            if entry:
+                # Check if label already exists
+                if self.vault.get_entry(entry.label):
+                    self.notify(
+                        f"Entry '{entry.label}' already exists", severity="error"
+                    )
+                    return
+
+                self.vault.add_entry(entry)
+                self.vault.save(self.password)
+                self.refresh_table()
+                self.notify(f"Added entry '{entry.label}'", severity="information")
+
+        self.push_screen(AddEntryModal(), handle_entry)
+
+    def action_select_row(self) -> None:
+        """Dummy action for Enter key - actual handling in DataTable.RowSelected event."""
+        pass
+
+    def action_copy_and_close(self) -> None:
+        """Copy token and close app (Ctrl+Enter)."""
+        table = self.query_one("#entries-table", DataTable)
+        if table.cursor_row is not None and table.row_count > 0:
+            # Get the row key from the cursor position
+            row_key = list(table.rows.keys())[table.cursor_row]
+            label = str(row_key.value)
+            entry = self.vault.get_entry(label)
+            if entry:
+                token = generate_token(entry)
+                self.copy_to_clipboard(token)
+                self.notify(f"Copied token for '{label}'", severity="information")
+                self.exit()
+
+    def action_clear_search(self) -> None:
+        """Clear search input."""
+        search_input = self.query_one("#search-input", Input)
+        search_input.value = ""
+        search_input.remove_class("visible")
+        # Refocus table
+        table = self.query_one("#entries-table", DataTable)
+        table.focus()
+
+
+def run_tui(vault_path: Optional[Path] = None) -> None:
+    """Run the TUI application.
+
+    Args:
+        vault_path: Optional path to vault file
+    """
+    vault_path = get_default_vault_path(vault_path)
+
+    if not vault_path.exists():
+        print(f"Error: Vault not found at {vault_path}")
+        print("Run 'dotp init' to create a new vault")
+        sys.exit(1)
+
+    # Get password from env or prompt
+    password = os.environ.get("DOTP_PASSWD")
+    if not password:
+        password = getpass("Enter vault password: ")
+
+    # Load config
+    config = Config.load()
+
+    # Run the app
+    app = DOTPApp(
+        vault_path=vault_path,
+        password=password,
+        close_on_copy=config.close_on_copy,
+        clipboard_command=config.clipboard_command,
+    )
+    app.run()

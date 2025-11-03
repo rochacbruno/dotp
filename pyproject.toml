@@ -1,0 +1,37 @@
+[project]
+name = "dotp"
+version = "0.1.0"
+description = "Dank One Time Password - CLI and TUI TOTP/Authenticator storage"
+readme = "README.md"
+authors = [
+    { name = "Bruno Rocha", email = "rochacbruno@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "pyotp>=2.9.0",
+    "cyclopts>=3.0.0",
+    "rich>=13.0.0",
+    "textual>=1.0.0",
+    "cryptography>=42.0.0",
+    "pyperclip>=1.9.0",
+    "xdg-base-dirs>=6.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.1.0",
+]
+
+[project.scripts]
+dotp = "dotp:main"
+
+[build-system]
+requires = ["uv_build>=0.9.2,<0.10.0"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-v --cov=src/dotp --cov-report=term-missing"

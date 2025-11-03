@@ -1,0 +1,42 @@
+{
+  "version": 2,
+  "database": {
+    "entries": [
+      {
+        "type": "totp",
+        "uuid": "8a9d73a6-f5c2-4f6e-98e1-2d3de4f37b9f",
+        "name": "GitHub",
+        "issuer": "GitHub",
+        "icon": "github",
+        "info": {
+          "secret": "JBSWY3DPEHPK3PXP",
+          "digits": 6,
+          "period": 30,
+          "algorithm": "SHA1"
+        },
+        "tags": []
+      },
+      {
+        "type": "totp",
+        "uuid": "b0fd77f1-6a59-4a26-9f44-3474e7a01652",
+        "name": "Google",
+        "issuer": "Google",
+        "icon": "google",
+        "info": {
+          "secret": "KZXW6YTBOI======",
+          "digits": 6,
+          "period": 30,
+          "algorithm": "SHA1"
+        },
+        "tags": ["personal"]
+      }
+    ],
+    "folders": [
+      {
+        "uuid": "dc2a7cc8-9075-4a93-b6e1-b8cb2c70bfa1",
+        "name": "Work"
+      }
+    ]
+  }
+}
+
