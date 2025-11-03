@@ -5,6 +5,12 @@
 [![Tests](https://github.com/rochacbruno/dotp/actions/workflows/test.yml/badge.svg)](https://github.com/rochacbruno/dotp/actions/workflows/test.yml)
 [![Lint](https://github.com/rochacbruno/dotp/actions/workflows/lint.yml/badge.svg)](https://github.com/rochacbruno/dotp/actions/workflows/lint.yml)
 
+
+![TUI](./assets/tui.png)
+
+
+![Cli List](./assets/list.png)
+
 ## Features
 
 - Encrypted vault storage with password protection
@@ -113,6 +119,9 @@ uvx dotp export backup.txt
 uvx dotp export backup.json --aegis
 ```
 
+![CLI](./assets/cli.png)
+
+
 ## TUI Mode
 
 Launch the interactive TUI by running `dotp` without arguments:
@@ -121,6 +130,10 @@ Launch the interactive TUI by running `dotp` without arguments:
 uvx dotp
 # or with password from environment
 DOTP_PASSWD=123456 uvx dotp
+# or with custom vault path
+uvx dotp --path /tmp/my-vault.dotp
+# or with environment variable
+DOTP_VAULT=/tmp/my-vault.dotp uvx dotp
 ```
 
 ### TUI Features
@@ -152,15 +165,17 @@ clipboard_command = "wl-copy"
 ## Environment Variables
 
 - `DOTP_PASSWD`: Set vault password (useful for scripting)
+- `DOTP_VAULT`: Set vault file path (alternative to `--path` or config file)
 
 ## Vault Location Priority
 
 DOTP looks for the vault in this order:
 
 1. `--path` argument
-2. `vault_path` in config file
-3. `.vault.dotp` in current directory
-4. `~/.config/dotp/.vault.dotp`
+2. `DOTP_VAULT` environment variable
+3. `vault_path` in config file
+4. `.vault.dotp` in current directory
+5. `~/.config/dotp/.vault.dotp`
 
 ## Security
 
