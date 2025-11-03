@@ -99,7 +99,9 @@ def init(
 
 @app.command
 def add(
-    label: Annotated[Optional[str], cyclopts.Parameter(help="Label for the entry")] = None,
+    label: Annotated[
+        Optional[str], cyclopts.Parameter(help="Label for the entry")
+    ] = None,
     secret: Annotated[Optional[str], cyclopts.Parameter(help="TOTP secret key")] = None,
     digits: Annotated[int, cyclopts.Parameter(help="Number of digits")] = 6,
     algo: Annotated[str, cyclopts.Parameter(help="Hash algorithm")] = "SHA1",

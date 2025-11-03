@@ -1,12 +1,10 @@
 """Vault management for storing and retrieving TOTP secrets."""
 
 import json
-import re
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote
 from dataclasses import dataclass, asdict
-from cryptography.fernet import InvalidToken
 
 from .crypto import encrypt_data, decrypt_data
 
@@ -181,6 +179,4 @@ class Vault:
             List of matching entries
         """
         query_lower = query.lower()
-        return [
-            entry for entry in self._entries if query_lower in entry.label.lower()
-        ]
+        return [entry for entry in self._entries if query_lower in entry.label.lower()]

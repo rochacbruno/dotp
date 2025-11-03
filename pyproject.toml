@@ -3,6 +3,7 @@ name = "dotp"
 version = "0.1.0"
 description = "Dank One Time Password - CLI and TUI TOTP/Authenticator storage"
 readme = "README.md"
+license = { text = "AGPL-3.0-or-later" }
 authors = [
     { name = "Bruno Rocha", email = "rochacbruno@gmail.com" }
 ]

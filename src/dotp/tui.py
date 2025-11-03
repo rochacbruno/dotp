@@ -8,18 +8,17 @@ from typing import Optional
 from getpass import getpass
 
 from textual.app import App, ComposeResult
-from textual.containers import Container, Vertical
+from textual.containers import Container
 from textual.widgets import DataTable, Header, Footer, Input, Label, Button, ProgressBar
 from textual.screen import ModalScreen
 from textual.binding import Binding
 from textual import on, events
-from textual.reactive import reactive
 from cryptography.fernet import InvalidToken
 from rich.text import Text
 from urllib.parse import unquote
 
 from .vault import Vault, TOTPEntry
-from .totp import generate_token, get_valid_until_time, get_time_remaining
+from .totp import generate_token, get_time_remaining
 from .config import get_default_vault_path, Config
 
 
@@ -142,7 +141,9 @@ class DOTPApp(App):
     """
 
     BINDINGS = [
-        Binding("enter", "select_row", "Copy", show=True),  # Handled by DataTable.RowSelected
+        Binding(
+            "enter", "select_row", "Copy", show=True
+        ),  # Handled by DataTable.RowSelected
         Binding("ctrl+enter", "copy_and_close", "Copy & Close", show=True),
         Binding("ctrl+a", "add_entry", "Add Entry", show=True),
         Binding("ctrl+q", "quit", "Quit", show=True),
@@ -263,27 +264,37 @@ class DOTPApp(App):
         # If table has focus and user types backspace or printable char (not ctrl/arrow keys)
         # and search is visible, refocus search
         if table.has_focus and search_input.has_class("visible"):
-            if event.key == "backspace" or (event.is_printable and not event.key.startswith("ctrl")):
+            if event.key == "backspace" or (
+                event.is_printable and not event.key.startswith("ctrl")
+            ):
                 search_input.focus()
                 # If it's a printable character, append it
                 if event.is_printable and not event.key.startswith("ctrl"):
                     search_input.value += event.character
+
                     def move_cursor():
                         search_input.cursor_position = len(search_input.value)
+
                     self.call_after_refresh(move_cursor)
                 event.prevent_default()
                 event.stop()
                 return
 
         # If search input is not focused and user types a printable character
-        if not search_input.has_focus and event.is_printable and not event.key.startswith("ctrl"):
+        if (
+            not search_input.has_focus
+            and event.is_printable
+            and not event.key.startswith("ctrl")
+        ):
             # Show search input and set its value to include the typed character
             search_input.add_class("visible")
             search_input.value = event.character
             search_input.focus()
+
             # Use call_after_refresh to move cursor after focus completes
             def move_cursor():
                 search_input.cursor_position = len(search_input.value)
+
             self.call_after_refresh(move_cursor)
             event.prevent_default()
             event.stop()

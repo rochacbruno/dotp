@@ -1,8 +1,6 @@
 """DOTP - Dank One Time Password Manager."""
 
 import sys
-from pathlib import Path
-from typing import Optional
 
 from .cli import app as cli_app
 from .tui import run_tui

@@ -92,12 +92,12 @@ DOTP_PASSWD=123456 uvx dotp get GitHub | wl-copy
 ### Import from file
 
 DOTP supports importing from various formats. See the sample files in the repository:
-- [`full_vault.txt`](./full_vault.txt) - Example otpauth URI format
+- [`otpauth_sample.txt`](./otpauth_sample.txt) - Example otpauth URI format
 - [`aegis_sample.json`](./aegis_sample.json) - Example Aegis export format
 
 ```bash
 # From otpauth URI format
-uvx dotp import full_vault.txt
+uvx dotp import otpauth_sample.txt
 
 # From Aegis JSON format
 uvx dotp import aegis.json --aegis
@@ -203,4 +203,4 @@ uvx ruff format src/
 
 ## License
 
-MIT License - See LICENSE file for details
+AGPL License - See LICENSE file for details
