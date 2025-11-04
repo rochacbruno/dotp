@@ -95,6 +95,26 @@ For scripting (clean output):
 DOTP_PASSWD=123456 uvx dotp get GitHub | wl-copy
 ```
 
+#### Scripting tip
+
+`~/.local/bin/o`
+```bash
+
+#!/usr/bin/bash
+DOTP_PASSWD=1234 uvx dotp get $@ | wl-copy
+```
+
+Then you can simply run on terminal 
+
+```bash
+o Google
+```
+
+and get the code copied to clipboard.
+
+If you are running on DMS, you can add the command runner plugin
+and then open the launcher and do `>o dropbox` -> run in bg.
+
 ### Import from file
 
 DOTP supports importing from various formats. See the sample files in the repository:
