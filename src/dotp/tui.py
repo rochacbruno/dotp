@@ -89,7 +89,8 @@ class DOTPApp(App):
         align: center middle;
         background: $surface;
         border: solid $primary;
-        width: 60;
+        width: 90%;
+        max-width: 60;
         height: auto;
         padding: 1 2;
     }
@@ -192,8 +193,7 @@ class DOTPApp(App):
             return
 
         table = self.query_one("#entries-table", DataTable)
-        table.add_column("Label", key="label", width=50)
-        table.add_column("Token", key="token", width=15)
+        self._setup_columns()
         table.cursor_type = "row"
 
         self.refresh_table()
@@ -204,6 +204,34 @@ class DOTPApp(App):
 
         # Set up auto-refresh timer
         self.update_timer = self.set_interval(1.0, self.refresh_tokens)
+
+    def _setup_columns(self) -> None:
+        """Setup table columns with responsive widths."""
+        table = self.query_one("#entries-table", DataTable)
+        # Clear existing columns if any
+        table.clear(columns=True)
+
+        # Calculate available width (accounting for borders, scrollbar, etc.)
+        # Terminal width minus borders (2) and some padding (2)
+        available_width = self.size.width - 4
+
+        # Token column needs fixed width (e.g., "123 456" = 7 chars + padding)
+        token_width = 10
+
+        # Label gets remaining space
+        label_width = max(15, available_width - token_width)
+
+        table.add_column("Label", key="label", width=label_width)
+        table.add_column("Token", key="token", width=token_width)
+
+    def on_resize(self, event: events.Resize) -> None:
+        """Handle terminal resize to adjust column widths."""
+        try:
+            self._setup_columns()
+            self.refresh_table()
+        except Exception:
+            # Ignore errors during resize (table might not be ready)
+            pass
 
     def refresh_table(self) -> None:
         """Refresh the table with current entries."""
@@ -216,13 +244,21 @@ class DOTPApp(App):
         else:
             entries = self.vault.list_entries()
 
+        # Get label column width for truncation
+        label_width = table.columns["label"].width
+
         # Add rows with colored tokens
         for entry in entries:
             token = generate_token(entry)
             # Decode URL-encoded labels for display
             decoded_label = unquote(entry.label)
-            # Create styled token in green
-            styled_token = Text(token, style="bold green")
+
+            # Truncate label if needed
+            if len(decoded_label) > label_width:
+                decoded_label = decoded_label[: label_width - 1] + "…"
+
+            # Create styled token in green with space separator
+            styled_token = Text(token[:3] + " " + token[3:], style="bold green")
             table.add_row(decoded_label, styled_token, key=entry.label)
 
         # Select first row if available
@@ -238,7 +274,8 @@ class DOTPApp(App):
             entry = self.vault.get_entry(str(row_key.value))
             if entry:
                 token = generate_token(entry)
-                styled_token = Text(token, style="bold green")
+                # Add space separator for readability
+                styled_token = Text(token[:3] + " " + token[3:], style="bold green")
                 table.update_cell(row_key, "token", styled_token)
 
         self.update_progress()
