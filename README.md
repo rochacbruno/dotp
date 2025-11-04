@@ -6,10 +6,10 @@
 [![Lint](https://github.com/rochacbruno/dotp/actions/workflows/lint.yml/badge.svg)](https://github.com/rochacbruno/dotp/actions/workflows/lint.yml)
 
 
-![TUI](./assets/tui.png)
+![TUI](https://raw.githubusercontent.com/rochacbruno/dotp/main/assets/tui.png)
 
 
-![Cli List](./assets/list.png)
+![Cli List](https://raw.githubusercontent.com/rochacbruno/dotp/main/assets/list.png)
 
 ## Features
 
@@ -139,7 +139,7 @@ uvx dotp export backup.txt
 uvx dotp export backup.json --aegis
 ```
 
-![CLI](./assets/cli.png)
+![CLI](https://raw.githubusercontent.com/rochacbruno/dotp/main/assets/cli.png)
 
 
 ## TUI Mode

@@ -22,20 +22,35 @@ from .totp import generate_token, get_time_remaining
 from .config import get_default_vault_path, Config
 
 
-class AddEntryModal(ModalScreen[Optional[TOTPEntry]]):
-    """Modal screen for adding a new entry."""
+class EntryModal(ModalScreen[Optional[TOTPEntry]]):
+    """Modal screen for adding or editing an entry."""
 
     BINDINGS = [
         Binding("escape", "cancel", "Cancel", show=True),
+        Binding("ctrl+r", "toggle_secret", "Reveal Secret", show=True),
     ]
+
+    def __init__(self, entry: Optional[TOTPEntry] = None, original_label: Optional[str] = None):
+        """Initialize the modal.
+        
+        Args:
+            entry: Entry to edit (None for new entry)
+            original_label: Original label (for editing, to track label changes)
+        """
+        super().__init__()
+        self.entry = entry
+        self.original_label = original_label or (entry.label if entry else None)
+        self.is_editing = entry is not None
+        self.secret_revealed = False
 
     def compose(self) -> ComposeResult:
         """Compose the modal UI."""
         with Container(id="add-modal"):
-            yield Label("Add New Entry", id="modal-title")
+            title = "Edit Entry" if self.is_editing else "Add New Entry"
+            yield Label(title, id="modal-title")
             yield Label("Label:")
             yield Input(placeholder="e.g., GitHub", id="label-input")
-            yield Label("Secret:")
+            yield Label("Secret: (^R to reveal)")
             yield Input(placeholder="TOTP secret key", password=True, id="secret-input")
             yield Label("Digits (default: 6):")
             yield Input(placeholder="6", id="digits-input")
@@ -44,16 +59,32 @@ class AddEntryModal(ModalScreen[Optional[TOTPEntry]]):
             yield Label("Period (default: 30):")
             yield Input(placeholder="30", id="period-input")
             with Container(id="button-container"):
-                yield Button("Add", variant="primary", id="add-button")
+                button_label = "Save" if self.is_editing else "Add"
+                yield Button(button_label, variant="primary", id="add-button")
                 yield Button("Cancel", variant="default", id="cancel-button")
+
+    def on_mount(self) -> None:
+        """Prefill form if editing."""
+        if self.entry:
+            self.query_one("#label-input", Input).value = unquote(self.entry.label)
+            self.query_one("#secret-input", Input).value = self.entry.secret
+            self.query_one("#digits-input", Input).value = str(self.entry.digits)
+            self.query_one("#algo-input", Input).value = self.entry.algorithm
+            self.query_one("#period-input", Input).value = str(self.entry.period)
 
     def action_cancel(self) -> None:
         """Cancel and close modal."""
         self.dismiss(None)
 
+    def action_toggle_secret(self) -> None:
+        """Toggle secret visibility."""
+        secret_input = self.query_one("#secret-input", Input)
+        self.secret_revealed = not self.secret_revealed
+        secret_input.password = not self.secret_revealed
+
     @on(Button.Pressed, "#add-button")
     def on_add_button(self) -> None:
-        """Handle add button press."""
+        """Handle add/save button press."""
         label_input = self.query_one("#label-input", Input)
         secret_input = self.query_one("#secret-input", Input)
         digits_input = self.query_one("#digits-input", Input)
@@ -73,7 +104,11 @@ class AddEntryModal(ModalScreen[Optional[TOTPEntry]]):
         entry = TOTPEntry(
             label=label, secret=secret, digits=digits, algorithm=algo, period=period
         )
-        self.dismiss(entry)
+        # Return tuple: (entry, original_label) for edit tracking
+        if self.is_editing:
+            self.dismiss((entry, self.original_label))
+        else:
+            self.dismiss((entry, None))
 
     @on(Button.Pressed, "#cancel-button")
     def on_cancel_button(self) -> None:
@@ -147,6 +182,7 @@ class DOTPApp(App):
         ),  # Handled by DataTable.RowSelected
         Binding("ctrl+enter", "copy_and_close", "Copy & Close", show=True),
         Binding("ctrl+a", "add_entry", "Add Entry", show=True),
+        Binding("ctrl+e", "edit_entry", "Edit Entry", show=True),
         Binding("ctrl+q", "quit", "Quit", show=True),
         Binding("escape", "clear_search", "Clear Search", show=False),
     ]
@@ -391,8 +427,9 @@ class DOTPApp(App):
     def action_add_entry(self) -> None:
         """Show modal to add a new entry."""
 
-        def handle_entry(entry: Optional[TOTPEntry]) -> None:
-            if entry:
+        def handle_entry(result) -> None:
+            if result:
+                entry, _ = result
                 # Check if label already exists
                 if self.vault.get_entry(entry.label):
                     self.notify(
@@ -405,7 +442,48 @@ class DOTPApp(App):
                 self.refresh_table()
                 self.notify(f"Added entry '{entry.label}'", severity="information")
 
-        self.push_screen(AddEntryModal(), handle_entry)
+        self.push_screen(EntryModal(), handle_entry)
+
+    def action_edit_entry(self) -> None:
+        """Show modal to edit the selected entry."""
+        table = self.query_one("#entries-table", DataTable)
+        if table.cursor_row is None or table.row_count == 0:
+            self.notify("No entry selected", severity="warning")
+            return
+
+        # Get the row key from the cursor position
+        row_key = list(table.rows.keys())[table.cursor_row]
+        label = str(row_key.value)
+        entry = self.vault.get_entry(label)
+        
+        if not entry:
+            self.notify("Entry not found", severity="error")
+            return
+
+        def handle_entry(result) -> None:
+            if result:
+                updated_entry, original_label = result
+                
+                # If label changed, check for duplicates
+                if updated_entry.label != original_label:
+                    if self.vault.get_entry(updated_entry.label):
+                        self.notify(
+                            f"Entry '{updated_entry.label}' already exists", severity="error"
+                        )
+                        return
+                    # Remove old entry
+                    self.vault.remove_entry(original_label)
+                else:
+                    # Same label, just remove to update
+                    self.vault.remove_entry(original_label)
+                
+                # Add updated entry
+                self.vault.add_entry(updated_entry)
+                self.vault.save(self.password)
+                self.refresh_table()
+                self.notify(f"Updated entry '{updated_entry.label}'", severity="information")
+
+        self.push_screen(EntryModal(entry=entry, original_label=label), handle_entry)
 
     def action_select_row(self) -> None:
         """Dummy action for Enter key - actual handling in DataTable.RowSelected event."""
