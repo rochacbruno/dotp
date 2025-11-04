@@ -30,9 +30,11 @@ class EntryModal(ModalScreen[Optional[TOTPEntry]]):
         Binding("ctrl+r", "toggle_secret", "Reveal Secret", show=True),
     ]
 
-    def __init__(self, entry: Optional[TOTPEntry] = None, original_label: Optional[str] = None):
+    def __init__(
+        self, entry: Optional[TOTPEntry] = None, original_label: Optional[str] = None
+    ):
         """Initialize the modal.
-        
+
         Args:
             entry: Entry to edit (None for new entry)
             original_label: Original label (for editing, to track label changes)
@@ -455,7 +457,7 @@ class DOTPApp(App):
         row_key = list(table.rows.keys())[table.cursor_row]
         label = str(row_key.value)
         entry = self.vault.get_entry(label)
-        
+
         if not entry:
             self.notify("Entry not found", severity="error")
             return
@@ -463,12 +465,13 @@ class DOTPApp(App):
         def handle_entry(result) -> None:
             if result:
                 updated_entry, original_label = result
-                
+
                 # If label changed, check for duplicates
                 if updated_entry.label != original_label:
                     if self.vault.get_entry(updated_entry.label):
                         self.notify(
-                            f"Entry '{updated_entry.label}' already exists", severity="error"
+                            f"Entry '{updated_entry.label}' already exists",
+                            severity="error",
                         )
                         return
                     # Remove old entry
@@ -476,12 +479,14 @@ class DOTPApp(App):
                 else:
                     # Same label, just remove to update
                     self.vault.remove_entry(original_label)
-                
+
                 # Add updated entry
                 self.vault.add_entry(updated_entry)
                 self.vault.save(self.password)
                 self.refresh_table()
-                self.notify(f"Updated entry '{updated_entry.label}'", severity="information")
+                self.notify(
+                    f"Updated entry '{updated_entry.label}'", severity="information"
+                )
 
         self.push_screen(EntryModal(entry=entry, original_label=label), handle_entry)
 
