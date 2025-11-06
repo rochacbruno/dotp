@@ -115,6 +115,47 @@ and get the code copied to clipboard.
 If you are running on DMS, you can add the command runner plugin
 and then open the launcher and do `>o dropbox` -> run in bg.
 
+
+#### Wayland Automatic Typing
+
+> [!NOTE]
+> Required `wl-copy` and/or `wtype`
+
+This tool can simulate Yubikey on Wayland
+
+create a file e.g: `~/.local/bin/mycompanysso`
+
+```bash
+#!/usr/bin/bash
+export DOTP_VAULT=~/.config/dotp/.vault.dotp 
+export DOTP_PASSWD=123456 
+export TOKEN=$(~/.local/bin/dotp get MYCOMPANY)
+
+# Comment/Uncomment the actions you want.
+# Copy to clipboard
+# echo "$TOKEN" | wl-copy
+
+# Type directly to where the cursor is located
+wtype $TOKEN
+
+# Send notification
+notify-send "Company Token Generated"
+```
+
+Then `chmod +x ~/.local/bin/mycompanysso`
+
+and bind the keys, Niri example:
+
+```kdl
+binds {
+    Mod+Ctrl+X {spawn-sh "~/.local/bin/mycompanysso";}
+}
+```
+
+
+Now when you press `Mod + Ctrl + X` it will automatically type the token on any text input.
+
+
 ### Import from file
 
 DOTP supports importing from various formats. See the sample files in the repository:
