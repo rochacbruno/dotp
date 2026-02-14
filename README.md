@@ -119,7 +119,7 @@ and then open the launcher and do `>o dropbox` -> run in bg.
 #### Wayland Automatic Typing
 
 > [!NOTE]
-> Required `wl-copy` and/or `wtype`
+> Required `wl-copy` and/or `wtype` or `ydotool`
 
 This tool can simulate Yubikey on Wayland
 
@@ -129,14 +129,24 @@ create a file e.g: `~/.local/bin/mycompanysso`
 #!/usr/bin/bash
 export DOTP_VAULT=~/.config/dotp/.vault.dotp 
 export DOTP_PASSWD=123456 
-export TOKEN=$(~/.local/bin/dotp get MYCOMPANY)
+export TOKEN=$(~/.local/bin/dotp get MYCOMPANY | tr -d '\n')
 
 # Comment/Uncomment the actions you want.
 # Copy to clipboard
 # echo "$TOKEN" | wl-copy
 
+# DEBUG
+# echo "TOKEN='$TOKEN'" > /tmp/sso_debug.txt
+
 # Type directly to where the cursor is located
-wtype $TOKEN
+# sleep 0.3
+# wtype $TOKEN
+
+# Using ydotool (recommended)
+# NOTICE: You need ydotool running as a service
+#       and your user needs access to the socket
+export YDOTOOL_SOCKET=/tmp/.ydotool_socket
+ydotool type "$TOKEN"
 
 # Send notification
 notify-send "Company Token Generated"
